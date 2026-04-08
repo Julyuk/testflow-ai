@@ -1,0 +1,39 @@
+name: Playwright Tests
+
+on:
+  push:
+    branches: [main, "generated-tests/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-playwright playwright pytest-html
+          playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        run: |
+          pytest generated_tests/ \
+            --html=reports/report.html \
+            --self-contained-html \
+            -v --tb=short
+        continue-on-error: true
+
+      - name: Upload test report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: reports/
+          retention-days: 30

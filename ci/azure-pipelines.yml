@@ -1,0 +1,49 @@
+# Azure DevOps pipeline — runs generated Playwright tests
+trigger:
+  branches:
+    include:
+      - main
+      - "generated-tests/*"
+
+pool:
+  vmImage: "ubuntu-latest"
+
+variables:
+  pythonVersion: "3.11"
+
+stages:
+  - stage: Test
+    displayName: "Run Playwright Tests"
+    jobs:
+      - job: PlaywrightTests
+        displayName: "Playwright E2E Tests"
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: "$(pythonVersion)"
+
+          - script: |
+              pip install pytest pytest-playwright playwright
+              playwright install --with-deps chromium
+            displayName: "Install dependencies"
+
+          - script: |
+              pytest generated_tests/ \
+                --html=reports/report.html \
+                --self-contained-html \
+                -v \
+                --tb=short
+            displayName: "Run tests"
+            continueOnError: true
+
+          - task: PublishTestResults@2
+            inputs:
+              testResultsFormat: "JUnit"
+              testResultsFiles: "reports/*.xml"
+            displayName: "Publish test results"
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              pathToPublish: "reports"
+              artifactName: "test-reports"
+            displayName: "Publish HTML report"
