@@ -1,0 +1,23 @@
+{
+  "servers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "./generated_tests"],
+      "description": "Read/write generated test files"
+    },
+    "azure-devops": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-azure-devops"],
+      "env": {
+        "AZURE_DEVOPS_ORG": "",
+        "AZURE_DEVOPS_PAT": ""
+      },
+      "description": "Azure DevOps test plans, work items, pipelines"
+    },
+    "git": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-git", "--repository", "./generated_tests"],
+      "description": "Commit and push generated tests to repository"
+    }
+  }
+}
