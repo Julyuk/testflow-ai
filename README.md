@@ -215,3 +215,7 @@ Test files:
 | `FRONTEND_URL` | No | CORS origin (default: `http://localhost:5173`) |
 | `AZURE_DEVOPS_ORG` | No | Azure DevOps organization name |
 | `AZURE_DEVOPS_PAT` | No | Azure DevOps Personal Access Token |
+
+---
+
+© 2026 Yuliia Ukrainets. All rights reserved. Unauthorized use, copying or distribution is prohibited.
