@@ -56,13 +56,42 @@ class GitHubClient:
             return resp.json().get("sha")
         return None
 
+    async def _ensure_branch(self, client: httpx.AsyncClient) -> None:
+        """Create the target branch from the repo default branch if it doesn't exist."""
+        resp = await client.get(
+            self._repo_url(f"/git/ref/heads/{self.branch}"),
+            headers=self._headers,
+        )
+        if resp.status_code == 200:
+            return  # branch already exists
+
+        # Get default branch SHA to branch from
+        repo_resp = await client.get(self._repo_url(""), headers=self._headers)
+        repo_resp.raise_for_status()
+        default_branch = repo_resp.json().get("default_branch", "main")
+
+        ref_resp = await client.get(
+            self._repo_url(f"/git/ref/heads/{default_branch}"),
+            headers=self._headers,
+        )
+        ref_resp.raise_for_status()
+        sha = ref_resp.json()["object"]["sha"]
+
+        create_resp = await client.post(
+            self._repo_url("/git/refs"),
+            headers=self._headers,
+            json={"ref": f"refs/heads/{self.branch}", "sha": sha},
+        )
+        if create_resp.status_code not in (200, 201):
+            raise RuntimeError(f"Failed to create branch '{self.branch}': {create_resp.text[:120]}")
+
     async def push_files(
         self,
         files: dict[str, str],
         commit_message: str = "Add TestFlow AI generated tests",
     ) -> dict:
         """
-        Create or update files in the repository.
+        Create or update files in the repository, auto-creating the branch if needed.
 
         Args:
             files: mapping of repo-relative path → file content (plain text).
@@ -75,6 +104,8 @@ class GitHubClient:
         errors: list[str] = []
 
         async with httpx.AsyncClient(timeout=30) as client:
+            await self._ensure_branch(client)
+
             for path, content in files.items():
                 encoded = base64.b64encode(content.encode()).decode()
                 sha = await self._get_file_sha(client, path)
