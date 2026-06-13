@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   Card, Table, Tag, Button, Space, Typography, Checkbox,
-  Collapse, Tooltip, Modal, Input, Form, Select
+  Collapse, Tooltip, Modal, Input, Form, Select, Radio
 } from 'antd'
 import {
   ReloadOutlined, PlayCircleOutlined, EditOutlined,
@@ -46,7 +46,6 @@ function cloneCase(tc: TestCase): TestCase {
 export default function TestCaseEditor({ testCases, onApprove, onRegenerate, loading }: Props) {
   const [cases, setCases] = useState<TestCase[]>(() => testCases.map(cloneCase))
 
-  // Sync when parent updates test cases (e.g. after regeneration)
   useEffect(() => {
     setCases(testCases.map(cloneCase))
   }, [testCases])
@@ -54,14 +53,15 @@ export default function TestCaseEditor({ testCases, onApprove, onRegenerate, loa
   const [regenerateModalOpen, setRegenerateModalOpen] = useState(false)
   const [feedback, setFeedback] = useState('')
   const [editingCase, setEditingCase] = useState<TestCase | null>(null)
+  const [typeFilter, setTypeFilter] = useState<string>('all')
+  const [priorityFilter, setPriorityFilter] = useState<string>('all')
 
   const toggleApprove = (id: string) => {
     setCases(prev => prev.map(tc => tc.id === id ? { ...tc, approved: !tc.approved } : tc))
   }
 
-  const approveAll = () => {
-    setCases(prev => prev.map(tc => ({ ...tc, approved: true })))
-  }
+  const approveAll = () => setCases(prev => prev.map(tc => ({ ...tc, approved: true })))
+  const deselectAll = () => setCases(prev => prev.map(tc => ({ ...tc, approved: false })))
 
   const openEdit = (tc: TestCase) => {
     setEditingCase(cloneCase(tc))
@@ -109,6 +109,10 @@ export default function TestCaseEditor({ testCases, onApprove, onRegenerate, loa
   const removeStep = (idx: number) =>
     setEditingCase(prev => prev ? { ...prev, steps: prev.steps.filter((_, i) => i !== idx) } : prev)
 
+  const visibleCases = cases.filter(tc =>
+    (typeFilter === 'all' || tc.type === typeFilter) &&
+    (priorityFilter === 'all' || tc.priority === priorityFilter)
+  )
   const approvedCount = cases.filter(tc => tc.approved).length
   const incompleteApproved = cases.filter(tc => tc.approved && (!tc.title.trim() || tc.steps.length === 0))
 
@@ -208,6 +212,7 @@ export default function TestCaseEditor({ testCases, onApprove, onRegenerate, loa
         extra={
           <Space>
             <Button size="small" onClick={approveAll}>Select All</Button>
+            <Button size="small" onClick={deselectAll} disabled={approvedCount === 0}>Deselect All</Button>
             <Tooltip title="Ask AI to regenerate with your feedback">
               <Button
                 size="small"
@@ -221,11 +226,52 @@ export default function TestCaseEditor({ testCases, onApprove, onRegenerate, loa
           </Space>
         }
       >
+        {/* Filter bar */}
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
+          <Space size={6}>
+            <Text type="secondary" style={{ fontSize: 12 }}>Type:</Text>
+            <Radio.Group
+              size="small"
+              value={typeFilter}
+              onChange={e => setTypeFilter(e.target.value)}
+              optionType="button"
+              options={[
+                { label: 'All', value: 'all' },
+                { label: 'Happy Path', value: 'happy_path' },
+                { label: 'Negative', value: 'negative' },
+                { label: 'Edge Case', value: 'edge_case' },
+                { label: 'Security', value: 'security' },
+              ]}
+            />
+          </Space>
+          <Space size={6}>
+            <Text type="secondary" style={{ fontSize: 12 }}>Priority:</Text>
+            <Radio.Group
+              size="small"
+              value={priorityFilter}
+              onChange={e => setPriorityFilter(e.target.value)}
+              optionType="button"
+              options={[
+                { label: 'All', value: 'all' },
+                { label: 'Critical', value: 'critical' },
+                { label: 'High', value: 'high' },
+                { label: 'Medium', value: 'medium' },
+                { label: 'Low', value: 'low' },
+              ]}
+            />
+          </Space>
+          {(typeFilter !== 'all' || priorityFilter !== 'all') && (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Showing {visibleCases.length} of {cases.length}
+            </Text>
+          )}
+        </div>
+
         <Table
-          dataSource={cases}
+          dataSource={visibleCases}
           columns={columns}
           rowKey="id"
-          pagination={false}
+          pagination={visibleCases.length > 12 ? { pageSize: 12, size: 'small', showSizeChanger: false } : false}
           size="small"
           style={{ marginBottom: 16 }}
         />

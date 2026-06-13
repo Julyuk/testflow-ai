@@ -31,15 +31,19 @@ export default function RequirementsEditor({
 }: Props) {
   const [value, setValue] = useState(pipelineState?.raw_requirements ?? '')
   const [editedReqs, setEditedReqs] = useState<Requirement[]>([])
+  const [savedReqs, setSavedReqs] = useState<string>('')
   const [saving, setSaving] = useState(false)
   const [approving, setApproving] = useState(false)
 
-  // Sync editable requirements when pipeline state changes
   useEffect(() => {
     if (pipelineState?.requirements?.length) {
-      setEditedReqs(pipelineState.requirements.map(r => ({ ...r, acceptance_criteria: [...r.acceptance_criteria] })))
+      const reqs = pipelineState.requirements.map(r => ({ ...r, acceptance_criteria: [...r.acceptance_criteria] }))
+      setEditedReqs(reqs)
+      setSavedReqs(JSON.stringify(reqs))
     }
   }, [pipelineState?.requirements])
+
+  const isDirty = savedReqs !== '' && JSON.stringify(editedReqs) !== savedReqs
 
   const handleSubmit = async () => {
     if (!value.trim()) return
@@ -51,6 +55,7 @@ export default function RequirementsEditor({
     setSaving(true)
     try {
       await onSaveRequirements(editedReqs)
+      setSavedReqs(JSON.stringify(editedReqs))
     } finally {
       setSaving(false)
     }
@@ -117,16 +122,18 @@ export default function RequirementsEditor({
         extra={
           <Space size={8}>
             {onSaveRequirements && (
-              <Button
-                size="small"
-                icon={<SaveOutlined />}
-                type="primary"
-                ghost
-                onClick={handleSave}
-                loading={saving || loading}
-              >
-                Save Changes
-              </Button>
+              <Tooltip title={isDirty ? 'You have unsaved changes' : 'No changes to save'}>
+                <Button
+                  size="small"
+                  icon={<SaveOutlined />}
+                  type={isDirty ? 'primary' : 'default'}
+                  onClick={handleSave}
+                  loading={saving || loading}
+                  disabled={!isDirty}
+                >
+                  {isDirty ? '● Save Changes' : 'Saved'}
+                </Button>
+              </Tooltip>
             )}
           </Space>
         }

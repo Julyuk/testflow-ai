@@ -1,4 +1,4 @@
-import { Steps, Tag, Typography } from 'antd'
+import { Steps, Tag, Typography, Alert } from 'antd'
 import type { StageKey } from '@/types'
 
 const { Text } = Typography
@@ -29,33 +29,42 @@ interface Props {
 }
 
 export default function PipelineView({ currentStage, awaitingHuman }: Props) {
+  const isError = currentStage === 'error'
   const current = stageIndex(currentStage)
   const isCompleted = currentStage === 'completed'
 
-  const items = STAGES.map((s, i) => {
+  type StepStatus = 'finish' | 'process' | 'wait' | 'error'
+  const items: { title: React.ReactNode; status: StepStatus }[] = STAGES.map((s, i) => {
     const isActive = s.key === currentStage
     const isPast = i < current
-    const status: 'finish' | 'process' | 'wait' = (isPast || isCompleted)
-      ? 'finish'
-      : isActive ? 'process' : 'wait'
-
-    return {
-      title: <span style={{ whiteSpace: 'nowrap' }}>{s.label}</span>,
-      status,
-    }
+    const status: StepStatus = (isPast || isCompleted) ? 'finish' : isActive ? 'process' : 'wait'
+    return { title: <span style={{ whiteSpace: 'nowrap' }}>{s.label}</span>, status }
   })
+
+  // Mark the last completed stage as error when pipeline failed
+  if (isError && current > 0) {
+    items[current - 1] = { ...items[current - 1], status: 'error' }
+  }
 
   const activeLabel = STAGES.find(s => s.key === currentStage)?.label ?? currentStage
 
   return (
     <div>
       <Steps
-        current={isCompleted ? STAGES.length : current}
+        current={isCompleted ? STAGES.length : Math.max(0, current - (isError ? 1 : 0))}
         items={items}
         size="small"
         style={{ padding: '8px 0' }}
       />
-      {awaitingHuman && !isCompleted && (
+      {isError && (
+        <Alert
+          type="error"
+          showIcon
+          message="Pipeline failed at the previous stage. Use Restart Pipeline to retry."
+          style={{ marginTop: 8 }}
+        />
+      )}
+      {awaitingHuman && !isCompleted && !isError && (
         <div style={{
           marginTop: 8,
           padding: '6px 12px',

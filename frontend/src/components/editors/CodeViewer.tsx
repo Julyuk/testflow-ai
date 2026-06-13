@@ -5,6 +5,7 @@ import {
   DownloadOutlined, CloudUploadOutlined, DownOutlined,
   FileOutlined, FolderOutlined, FolderOpenOutlined,
   BulbOutlined, ReloadOutlined, LoadingOutlined, GithubOutlined,
+  CopyOutlined,
 } from '@ant-design/icons'
 import Editor from '@monaco-editor/react'
 import type { ValidationResult, ExecutionResult, TestCase } from '@/types'
@@ -368,6 +369,16 @@ export default function CodeViewer({
   const [activeFile, setActiveFile] = useState<string>(files[0] ?? '')
   const [syncing, setSyncing] = useState(false)
   const [pushingGitHub, setPushingGitHub] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    const content = generatedTests[activeFile]
+    if (!content) return
+    navigator.clipboard.writeText(content).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
   const terminalRef = useRef<HTMLDivElement>(null)
 
   // Live per-test status derived from streaming output lines
@@ -703,6 +714,21 @@ export default function CodeViewer({
                     ? <Tag color="green" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>valid</Tag>
                     : <Tag color="red" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>errors</Tag>
                 )}
+                <Tooltip title={copied ? 'Copied!' : 'Copy file contents'}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<CopyOutlined />}
+                    onClick={handleCopy}
+                    style={{
+                      marginLeft: 'auto',
+                      color: copied ? '#3fb950' : '#666',
+                      fontSize: 12,
+                    }}
+                  >
+                    {copied ? 'Copied' : ''}
+                  </Button>
+                </Tooltip>
               </>
             ) : (
               <Text style={{ fontSize: 12, color: '#666' }}>No file selected</Text>
