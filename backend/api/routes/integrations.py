@@ -124,7 +124,12 @@ async def delete_azure_devops_config(db: DBSession = Depends(get_db)):
 
 @router.post("/azure-devops/sync")
 async def sync_to_azure_devops(req: AzureDevOpsSyncRequest, db: DBSession = Depends(get_db)):
-    """Create a test plan + suite in Azure DevOps and sync all test cases."""
+    """Sync test cases to Azure DevOps as Test Case Work Items.
+
+    Uses the Work Items API (/_apis/wit/workitems/$Test Case) which is available
+    on all ADO tiers. The Test Plans API (/_apis/test/plans) requires a paid
+    "Basic + Test Plans" licence and is intentionally not used here.
+    """
     record = db.query(IntegrationConfig).filter(
         IntegrationConfig.provider == "azure_devops"
     ).first()
@@ -149,24 +154,27 @@ async def sync_to_azure_devops(req: AzureDevOpsSyncRequest, db: DBSession = Depe
     client = AzureDevOpsClient(record.organization, record.project, pat)
 
     try:
-        plan = await client.create_test_plan(req.test_plan_name)
-        plan_id = plan["id"]
-
-        suite = await client.create_test_suite(plan_id, "Automated Tests")
-        suite_id = suite["id"]
-
         synced = 0
+        errors = []
         for tc in test_cases:
             steps_html = client.test_case_to_steps_html(tc.get("steps", []))
-            await client.create_test_case_work_item(tc.get("title", "Test"), steps_html)
-            synced += 1
+            title = tc.get("title", "Test")
+            try:
+                await client.create_test_case_work_item(title, steps_html)
+                synced += 1
+            except Exception as item_err:
+                errors.append(f"{title}: {item_err}")
+
+        if synced == 0 and errors:
+            raise HTTPException(status_code=502, detail=f"All items failed: {errors[0]}")
 
         return {
             "status": "synced",
-            "plan_id": plan_id,
-            "suite_id": suite_id,
             "test_cases_synced": synced,
+            "errors": errors,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Azure DevOps API error: {e}")
 
