@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Row, Col, Card, Button, Typography, Space, Alert,
-  Spin, Breadcrumb, Tag
+  Spin, Breadcrumb, Tag, Modal, Tooltip
 } from 'antd'
-import { ArrowLeftOutlined, HomeOutlined, ReloadOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, HomeOutlined, ReloadOutlined, ExpandOutlined } from '@ant-design/icons'
 import { useSessionStore } from '@/store/sessionStore'
 import { useSession } from '@/hooks/useSession'
 import PipelineView from '@/components/pipeline/PipelineView'
@@ -69,6 +69,7 @@ export default function PipelinePage() {
   // ── action handlers ────────────────────────────────────────────────────────
 
   const [starting, setStarting] = useState(false)
+  const [historyExpanded, setHistoryExpanded] = useState(false)
 
   const handleStart = async (requirements: string) => {
     if (starting) return
@@ -368,9 +369,22 @@ export default function PipelinePage() {
             }
             size="small"
             extra={
-              <Text type="secondary" style={{ fontSize: 11 }}>
-                Restore or rerun from a stage
-              </Text>
+              <Space size={6}>
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  Restore or rerun from a stage
+                </Text>
+                {checkpoints.length > 0 && (
+                  <Tooltip title="Expand history">
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<ExpandOutlined />}
+                      onClick={() => setHistoryExpanded(true)}
+                      style={{ color: '#8b949e' }}
+                    />
+                  </Tooltip>
+                )}
+              </Space>
             }
           >
             {checkpoints.length === 0 ? (
@@ -390,6 +404,34 @@ export default function PipelinePage() {
               ))
             )}
           </Card>
+
+          <Modal
+            open={historyExpanded}
+            onCancel={() => setHistoryExpanded(false)}
+            footer={null}
+            title={
+              <Space size={6}>
+                <Text strong>Stage History</Text>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {checkpoints.length} checkpoint{checkpoints.length !== 1 ? 's' : ''}
+                </Text>
+              </Space>
+            }
+            width="60vw"
+            destroyOnHidden
+            styles={{ body: { maxHeight: '70vh', overflowY: 'auto', paddingTop: 8 } }}
+          >
+            {[...checkpoints].reverse().map(cp => (
+              <StageCard
+                key={cp.id}
+                checkpoint={cp}
+                isActive={cp.stage === stage}
+                onGoBack={(c) => { handleGoBack(c); setHistoryExpanded(false) }}
+                onRerun={(c) => { handleRerunFromCheckpoint(c); setHistoryExpanded(false) }}
+                loading={pipelineLoading || starting}
+              />
+            ))}
+          </Modal>
         </Col>
       </Row>
     </div>

@@ -395,7 +395,7 @@ export default function CodeViewer({
   const setTestAction = (id: string, patch: Partial<TestActionState>) => {
     setTestActions(prev => ({
       ...prev,
-      [id]: { explaining: false, regenerating: false, regenerated: false, feedback: '', ...prev[id], ...patch },
+      [id]: { ...{ explaining: false, regenerating: false, regenerated: false, feedback: '' }, ...prev[id], ...patch },
     }))
   }
 
