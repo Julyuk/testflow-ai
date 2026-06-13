@@ -37,8 +37,15 @@ def _mock_graph(stage="refinement", awaiting=False):
         "error": None,
         "user_feedback": None,
     }
+    # _run_pipeline uses graph.stream(), not graph.invoke()
+    graph.stream.return_value = [state]
     graph.invoke.return_value = state
     graph.get_state_history.return_value = []
+    # get_state() returns an object whose .next tuple is empty (not interrupted)
+    mock_lg_state = MagicMock()
+    mock_lg_state.next = ()
+    mock_lg_state.config = {"configurable": {"checkpoint_id": None}}
+    graph.get_state.return_value = mock_lg_state
     return graph
 
 

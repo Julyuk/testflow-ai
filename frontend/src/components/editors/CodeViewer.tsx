@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Card, Button, Space, Tag, Typography, Alert, Spin, Tooltip, Dropdown, Collapse, Input } from 'antd'
+import { Card, Button, Space, Tag, Typography, Alert, Spin, Tooltip, Dropdown, Collapse, Input, message } from 'antd'
 import {
   PlayCircleOutlined, CheckCircleOutlined, CloseCircleOutlined,
   DownloadOutlined, CloudUploadOutlined, DownOutlined,
   FileOutlined, FolderOutlined, FolderOpenOutlined,
-  BulbOutlined, ReloadOutlined, LoadingOutlined,
+  BulbOutlined, ReloadOutlined, LoadingOutlined, GithubOutlined,
 } from '@ant-design/icons'
 import Editor from '@monaco-editor/react'
 import type { ValidationResult, ExecutionResult, TestCase } from '@/types'
-import { pipelineApi, integrationsApi } from '@/api/client'
+import { pipelineApi, integrationsApi, githubApi } from '@/api/client'
 
 const { Text, Title } = Typography
 
@@ -367,6 +367,7 @@ export default function CodeViewer({
   const files = Object.keys(generatedTests)
   const [activeFile, setActiveFile] = useState<string>(files[0] ?? '')
   const [syncing, setSyncing] = useState(false)
+  const [pushingGitHub, setPushingGitHub] = useState(false)
   const terminalRef = useRef<HTMLDivElement>(null)
 
   // Live per-test status derived from streaming output lines
@@ -528,9 +529,26 @@ export default function CodeViewer({
   const handleSyncAzure = async () => {
     setSyncing(true)
     try {
-      await integrationsApi.syncToAzure(sessionId, 'TestFlow AI')
+      const result = await integrationsApi.syncToAzure(sessionId, 'TestFlow AI')
+      message.success(`Synced ${result.test_cases_synced} test case(s) to Azure DevOps`)
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      message.error(detail ?? 'Failed to sync to Azure DevOps')
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const handlePushGitHub = async () => {
+    setPushingGitHub(true)
+    try {
+      const result = await githubApi.push(sessionId)
+      message.success(`Pushed ${result.pushed_count} file(s) to ${result.repo} (${result.branch})`)
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      message.error(detail ?? 'Failed to push to GitHub')
+    } finally {
+      setPushingGitHub(false)
     }
   }
 
@@ -542,7 +560,7 @@ export default function CodeViewer({
       onClick: () => pipelineApi.downloadZip(sessionId),
     },
     {
-      key: 'github',
+      key: 'github-actions',
       label: 'GitHub Actions workflow',
       icon: <DownloadOutlined />,
       onClick: () => pipelineApi.downloadGithubActions(sessionId),
@@ -553,13 +571,21 @@ export default function CodeViewer({
       icon: <DownloadOutlined />,
       onClick: () => pipelineApi.downloadAzurePipelines(sessionId),
     },
+    { type: 'divider' as const },
+    {
+      key: 'push-github',
+      label: pushingGitHub ? 'Pushing...' : 'Push to GitHub',
+      icon: <GithubOutlined />,
+      onClick: handlePushGitHub,
+      disabled: pushingGitHub,
+    },
   ]
 
   const activeValidation = validationByFile[activeFile]
 
   return (
     <Card
-      bodyStyle={{ padding: 0 }}
+      styles={{ body: { padding: 0 } }}
       title={
         <Space>
           <Title level={5} style={{ margin: 0 }}>Generated Tests</Title>
@@ -760,7 +786,7 @@ export default function CodeViewer({
                 <Card
                   size="small"
                   style={{ marginBottom: 8 }}
-                  bodyStyle={{ padding: '4px 0' }}
+                  styles={{ body: { padding: '4px 0' } }}
                   title={
                     <Space size={8}>
                       <Spin size="small" />

@@ -152,13 +152,23 @@ def _run_pipeline(graph, config: dict, input_state: Any, session_id: str, db: DB
         })
         raise
 
-    # Final status update
+    # Final status update — detect LangGraph interrupt via graph.get_state().next
+    # rather than result.get("awaiting_human"): interrupt nodes suspend before
+    # returning so awaiting_human is never True in the emitted state.
     stage = result.get("current_stage", "unknown")
     sess_row = db.query(SessionModel).filter(SessionModel.id == session_id).first()
     if sess_row:
+        is_interrupted = False
+        try:
+            lg_state = graph.get_state(config)
+            # lg_state.next is a tuple on real LangGraph states; len() == 0 on MagicMock
+            is_interrupted = bool(lg_state and len(lg_state.next) > 0)
+        except Exception:
+            pass
+
         if stage == "completed":
             sess_row.status = "completed"
-        elif result.get("awaiting_human"):
+        elif is_interrupted or result.get("awaiting_human"):
             sess_row.status = "paused"
         else:
             sess_row.status = "running"

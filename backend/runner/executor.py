@@ -166,30 +166,8 @@ def run_tests_streaming(
 
         conftest = Path(tmpdir) / "conftest.py"
         if not conftest.exists():
-            conftest.write_text(
-                "import pytest\n"
-                "from playwright.sync_api import sync_playwright\n\n"
-                "_BROWSER_ARGS = [\n"
-                "    '--no-sandbox', '--disable-setuid-sandbox',\n"
-                "    '--disable-dev-shm-usage', '--disable-gpu',\n"
-                "    '--no-zygote', '--disable-extensions',\n"
-                "]\n\n"
-                "@pytest.fixture\n"
-                "def browser():\n"
-                "    with sync_playwright() as p:\n"
-                "        b = p.chromium.launch(headless=True, args=_BROWSER_ARGS, timeout=30_000)\n"
-                "        yield b\n"
-                "        b.close()\n\n"
-                "@pytest.fixture\n"
-                "def page(browser):\n"
-                "    ctx = browser.new_context(ignore_https_errors=True)\n"
-                "    pg = ctx.new_page()\n"
-                "    pg.set_default_timeout(20_000)\n"
-                "    pg.set_default_navigation_timeout(30_000)\n"
-                "    yield pg\n"
-                "    ctx.close()\n",
-                encoding="utf-8",
-            )
+            from backend.agents.test_generation_agent import _CONFTEST_TEMPLATE
+            conftest.write_text(_CONFTEST_TEMPLATE, encoding="utf-8")
 
         # Build pytest target.
         # With cwd=tmpdir, pytest uses tmpdir as rootdir and emits relative paths

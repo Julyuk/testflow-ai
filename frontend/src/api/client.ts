@@ -5,6 +5,7 @@ import type {
   Checkpoint,
   ExecutionResult,
   AzureDevOpsConfig,
+  GitHubConfig,
 } from '@/types'
 
 const http = axios.create({
@@ -145,6 +146,29 @@ export const integrationsApi = {
 
   syncToAzure: (session_id: string, test_plan_name: string) =>
     http
-      .post('/integrations/azure-devops/sync', { session_id, test_plan_name })
+      .post<{ status: string; test_cases_synced: number }>('/integrations/azure-devops/sync', { session_id, test_plan_name })
+      .then(r => r.data),
+}
+
+// ── GitHub ────────────────────────────────────────────────────────────────────
+
+export const githubApi = {
+  getConfig: () =>
+    http.get<GitHubConfig>('/integrations/github').then(r => r.data),
+
+  saveConfig: (owner: string, repo: string, token: string, branch = 'main') =>
+    http
+      .post('/integrations/github', { owner, repo, token, branch })
+      .then(r => r.data),
+
+  deleteConfig: () =>
+    http.delete('/integrations/github').then(r => r.data),
+
+  push: (session_id: string, commit_message?: string) =>
+    http
+      .post<{ status: string; pushed_count: number; pushed: string[]; repo: string; branch: string }>(
+        '/integrations/github/push',
+        { session_id, commit_message: commit_message ?? 'Add TestFlow AI generated tests' },
+      )
       .then(r => r.data),
 }

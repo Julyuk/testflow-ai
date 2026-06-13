@@ -104,6 +104,14 @@ export interface AzureDevOpsConfig {
   pat?: string
 }
 
+export interface GitHubConfig {
+  configured: boolean
+  owner?: string
+  repo?: string
+  branch?: string
+  token?: string
+}
+
 // ── WebSocket event shapes ────────────────────────────────────────────────────
 
 export type WsEvent =

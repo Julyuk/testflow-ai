@@ -9,8 +9,8 @@
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-azure-devops"],
       "env": {
-        "AZURE_DEVOPS_ORG": "",
-        "AZURE_DEVOPS_PAT": ""
+        "AZURE_DEVOPS_ORG": "khnu-software-development-lab-ukrainets",
+        "AZURE_DEVOPS_PAT": "${AZURE_DEVOPS_PAT}"
       },
       "description": "Azure DevOps test plans, work items, pipelines"
     },

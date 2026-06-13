@@ -4,10 +4,10 @@ import {
   Divider, Tag, Popconfirm, message
 } from 'antd'
 import {
-  SaveOutlined, DeleteOutlined, CheckCircleOutlined, ApiOutlined
+  SaveOutlined, DeleteOutlined, CheckCircleOutlined, ApiOutlined, GithubOutlined
 } from '@ant-design/icons'
-import { integrationsApi } from '@/api/client'
-import type { AzureDevOpsConfig } from '@/types'
+import { integrationsApi, githubApi } from '@/api/client'
+import type { AzureDevOpsConfig, GitHubConfig } from '@/types'
 
 const { Title, Text } = Typography
 
@@ -16,6 +16,11 @@ export default function SettingsPage() {
   const [azureConfig, setAzureConfig] = useState<AzureDevOpsConfig | null>(null)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+
+  const [githubForm] = Form.useForm()
+  const [githubConfig, setGithubConfig] = useState<GitHubConfig | null>(null)
+  const [githubSaving, setGithubSaving] = useState(false)
+  const [githubLoading, setGithubLoading] = useState(true)
 
   useEffect(() => {
     integrationsApi.getAzureConfig()
@@ -30,6 +35,21 @@ export default function SettingsPage() {
       })
       .finally(() => setLoading(false))
   }, [azureForm])
+
+  useEffect(() => {
+    githubApi.getConfig()
+      .then(config => {
+        setGithubConfig(config)
+        if (config.configured) {
+          githubForm.setFieldsValue({
+            owner: config.owner,
+            repo: config.repo,
+            branch: config.branch ?? 'main',
+          })
+        }
+      })
+      .finally(() => setGithubLoading(false))
+  }, [githubForm])
 
   const handleSaveAzure = async () => {
     const values = await azureForm.validateFields()
@@ -52,6 +72,29 @@ export default function SettingsPage() {
     setAzureConfig({ configured: false })
     azureForm.resetFields()
     message.success('Azure DevOps configuration removed')
+  }
+
+  const handleSaveGitHub = async () => {
+    const values = await githubForm.validateFields()
+    setGithubSaving(true)
+    try {
+      await githubApi.saveConfig(values.owner, values.repo, values.token, values.branch ?? 'main')
+      const updated = await githubApi.getConfig()
+      setGithubConfig(updated)
+      message.success('GitHub configuration saved')
+      githubForm.setFieldValue('token', '')
+    } catch {
+      message.error('Failed to save GitHub configuration')
+    } finally {
+      setGithubSaving(false)
+    }
+  }
+
+  const handleDeleteGitHub = async () => {
+    await githubApi.deleteConfig()
+    setGithubConfig({ configured: false })
+    githubForm.resetFields()
+    message.success('GitHub configuration removed')
   }
 
   return (
@@ -153,17 +196,96 @@ export default function SettingsPage() {
       <Card
         title={
           <Space>
-            <ApiOutlined />
-            <Text strong>GitHub Actions</Text>
+            <GithubOutlined />
+            <Text strong>GitHub Integration</Text>
+            {githubConfig?.configured && (
+              <Tag color="green" icon={<CheckCircleOutlined />}>Connected</Tag>
+            )}
           </Space>
         }
+        loading={githubLoading}
         style={{ marginTop: 16 }}
       >
-        <Text type="secondary">
-          No configuration required. After code generation, use the <Text code>Export → GitHub Actions workflow</Text> button
-          in the code viewer to download a <Text code>.github/workflows/tests.yml</Text> file tailored
-          to your session's generated tests and target URL.
-        </Text>
+        {githubConfig?.configured && (
+          <Alert
+            type="success"
+            message={
+              <Space>
+                <Text>Connected to</Text>
+                <Text code>{githubConfig.owner}/{githubConfig.repo}</Text>
+                <Text type="secondary">branch: {githubConfig.branch}</Text>
+              </Space>
+            }
+            style={{ marginBottom: 16 }}
+          />
+        )}
+
+        <Form form={githubForm} layout="vertical">
+          <Form.Item
+            name="owner"
+            label="Owner"
+            rules={[{ required: true, message: 'Required' }]}
+            extra="GitHub username or organization (e.g. mycompany)"
+          >
+            <Input placeholder="mycompany" />
+          </Form.Item>
+          <Form.Item
+            name="repo"
+            label="Repository"
+            rules={[{ required: true, message: 'Required' }]}
+            extra="Repository name where tests will be pushed"
+          >
+            <Input placeholder="my-tests-repo" />
+          </Form.Item>
+          <Form.Item
+            name="branch"
+            label="Branch"
+            extra="Target branch (default: main)"
+          >
+            <Input placeholder="main" />
+          </Form.Item>
+          <Form.Item
+            name="token"
+            label={githubConfig?.configured ? 'New Personal Access Token (leave blank to keep current)' : 'Personal Access Token'}
+            rules={githubConfig?.configured ? [] : [{ required: true, message: 'Required' }]}
+            extra={
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                PAT is encrypted with AES-128 (Fernet) before storage.
+                Required scopes: Contents (Read & Write).
+              </Text>
+            }
+          >
+            <Input.Password placeholder={githubConfig?.configured ? githubConfig.token : 'ghp_...'} />
+          </Form.Item>
+
+          <Space>
+            <Button
+              type="primary"
+              icon={<SaveOutlined />}
+              onClick={handleSaveGitHub}
+              loading={githubSaving}
+            >
+              Save Configuration
+            </Button>
+            {githubConfig?.configured && (
+              <Popconfirm
+                title="Remove GitHub configuration?"
+                onConfirm={handleDeleteGitHub}
+                okButtonProps={{ danger: true }}
+              >
+                <Button danger icon={<DeleteOutlined />}>Remove</Button>
+              </Popconfirm>
+            )}
+          </Space>
+        </Form>
+
+        <Divider />
+
+        <Title level={5}>What this enables</Title>
+        <ul style={{ paddingLeft: 20 }}>
+          <li><Text>Push generated test files directly to a GitHub repository</Text></li>
+          <li><Text>Download a pre-configured <Text code>.github/workflows/tests.yml</Text> from the code viewer</Text></li>
+        </ul>
       </Card>
     </div>
   )

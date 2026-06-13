@@ -20,13 +20,13 @@ class TestRouteAfterRefinement:
         state = {"clarification_questions": ["What is the role?"]}
         assert route_after_refinement(state) == "clarification_wait"
 
-    def test_routes_to_test_case_gen_when_no_questions(self):
+    def test_routes_to_requirements_review_when_no_questions(self):
         state = {"clarification_questions": []}
-        assert route_after_refinement(state) == "test_case_gen"
+        assert route_after_refinement(state) == "requirements_review"
 
-    def test_routes_to_test_case_gen_when_questions_key_missing(self):
+    def test_routes_to_requirements_review_when_questions_key_missing(self):
         state = {}
-        assert route_after_refinement(state) == "test_case_gen"
+        assert route_after_refinement(state) == "requirements_review"
 
 
 class TestRouteAfterReview:
@@ -89,7 +89,7 @@ class TestGraphStructure:
         graph = build_graph()
         node_names = set(graph.nodes.keys())
         expected = {
-            "intake", "refinement", "clarification_wait",
+            "intake", "refinement", "clarification_wait", "requirements_review",
             "test_case_gen", "review_wait", "code_gen",
             "validation", "export",
         }
@@ -123,32 +123,23 @@ class TestGraphExecution:
         }
 
     def test_intake_transitions_to_refinement(self):
-        """Intake node should forward to refinement."""
+        """Intake → refinement → requirements_review interrupt (no clarification questions)."""
         def mock_refinement(state):
-            # No clarification questions → go straight to test_case_gen
             return {
-                "requirements": [{"id": "REQ-001", "raw_text": "login", "user_story": "...", "acceptance_criteria": [], "status": "structured"}],
+                "requirements": [{"id": "REQ-001", "raw_text": "login", "user_story": "As a user...", "acceptance_criteria": [], "status": "structured"}],
                 "clarification_questions": [],
-                "current_stage": PipelineStage.TEST_CASE_GENERATION,
+                "current_stage": PipelineStage.REQUIREMENTS_REVIEW,
                 "awaiting_human": False,
-            }
-
-        def mock_test_case(state):
-            return {
-                "test_cases": [{"id": "TC-001", "title": "Login test", "approved": False}],
-                "current_stage": PipelineStage.REVIEW_WAIT,
-                "awaiting_human": True,
             }
 
         graph = build_graph(checkpointer=MemorySaver())
         config = {"configurable": {"thread_id": "test-session"}}
 
-        with patch("backend.agents.orchestrator.run_requirements_agent", side_effect=mock_refinement), \
-             patch("backend.agents.orchestrator.run_test_case_agent", side_effect=mock_test_case):
+        with patch("backend.agents.orchestrator.run_requirements_agent", side_effect=mock_refinement):
             result = graph.invoke(self._make_state(), config)
 
-        # Should have stopped at review_wait interrupt
-        assert result["test_cases"][0]["id"] == "TC-001"
+        # Graph pauses at requirements_review — requirements should be populated
+        assert result["requirements"][0]["id"] == "REQ-001"
 
     def test_clarification_interrupt_fires_when_questions_present(self):
         """When refinement returns questions, graph should pause at clarification_wait."""

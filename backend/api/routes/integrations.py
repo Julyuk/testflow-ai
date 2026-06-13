@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session as DBSession
 from backend.models.database import get_db
 from backend.models.orm import IntegrationConfig
 from backend.integrations.azure_devops import AzureDevOpsClient
+from backend.integrations.github_integration import GitHubClient, validate_github_coords
 from backend.config.settings import settings
 
 router = APIRouter()
@@ -189,6 +190,130 @@ async def trigger_azure_pipeline(
         return {"status": "triggered", "run": result}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Azure DevOps API error: {e}")
+
+
+# ── GitHub endpoints ──────────────────────────────────────────────────────────
+
+class GitHubConfigRequest(BaseModel):
+    token: str
+    owner: str
+    repo: str
+    branch: str = "main"
+
+
+class GitHubPushRequest(BaseModel):
+    session_id: str
+    commit_message: str = "Add TestFlow AI generated tests"
+
+
+@router.post("/github")
+async def configure_github(
+    config: GitHubConfigRequest,
+    db: DBSession = Depends(get_db),
+):
+    """Save GitHub credentials. Token is stored encrypted."""
+    try:
+        validate_github_coords(config.owner, config.repo, config.branch)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    record = db.query(IntegrationConfig).filter(
+        IntegrationConfig.provider == "github"
+    ).first()
+
+    encrypted_token = _encrypt(config.token)
+
+    if record:
+        record.organization = config.owner
+        record.project = config.repo
+        record.pat_encrypted = encrypted_token
+        record.extra = {"branch": config.branch}
+    else:
+        record = IntegrationConfig(
+            provider="github",
+            organization=config.owner,
+            project=config.repo,
+            pat_encrypted=encrypted_token,
+            extra={"branch": config.branch},
+        )
+        db.add(record)
+    db.commit()
+    return {"status": "configured", "owner": config.owner, "repo": config.repo}
+
+
+@router.get("/github")
+async def get_github_config(db: DBSession = Depends(get_db)):
+    """Return stored GitHub config (token masked)."""
+    record = db.query(IntegrationConfig).filter(
+        IntegrationConfig.provider == "github"
+    ).first()
+    if not record:
+        return {"configured": False}
+    return {
+        "configured": True,
+        "owner": record.organization,
+        "repo": record.project,
+        "branch": (record.extra or {}).get("branch", "main"),
+        "token": "***" + (_decrypt(record.pat_encrypted)[-4:] if record.pat_encrypted else ""),
+    }
+
+
+@router.delete("/github")
+async def delete_github_config(db: DBSession = Depends(get_db)):
+    record = db.query(IntegrationConfig).filter(
+        IntegrationConfig.provider == "github"
+    ).first()
+    if record:
+        db.delete(record)
+        db.commit()
+    return {"status": "deleted"}
+
+
+@router.post("/github/push")
+async def push_to_github(req: GitHubPushRequest, db: DBSession = Depends(get_db)):
+    """Push all generated test files from the session to GitHub."""
+    record = db.query(IntegrationConfig).filter(
+        IntegrationConfig.provider == "github"
+    ).first()
+    if not record:
+        raise HTTPException(status_code=400, detail="GitHub not configured")
+
+    from backend.models.orm import StageSnapshot
+    snap = (
+        db.query(StageSnapshot)
+        .filter(StageSnapshot.session_id == req.session_id)
+        .order_by(StageSnapshot.created_at.desc())
+        .first()
+    )
+    if not snap:
+        raise HTTPException(status_code=404, detail="No pipeline state found for session")
+
+    generated: dict[str, str] = snap.snapshot_data.get("generated_tests", {})
+    if not generated:
+        raise HTTPException(status_code=422, detail="No generated tests to push")
+
+    token = _decrypt(record.pat_encrypted)
+    branch = (record.extra or {}).get("branch", "main")
+    client = GitHubClient(token, record.organization, record.project, branch)
+
+    try:
+        result = await client.push_files(generated, req.commit_message)
+        if result["errors"]:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Push partially failed: {'; '.join(result['errors'])}",
+            )
+        return {
+            "status": "pushed",
+            "pushed_count": result["pushed_count"],
+            "pushed": result["pushed"],
+            "repo": f"{record.organization}/{record.project}",
+            "branch": branch,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"GitHub API error: {e}")
 
 
 # ── MCP server endpoints ──────────────────────────────────────────────────────

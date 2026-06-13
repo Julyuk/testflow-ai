@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Card, Typography, Badge, Space } from 'antd'
-import { LoadingOutlined, CheckCircleOutlined, WarningOutlined, CloseCircleOutlined, InfoCircleOutlined } from '@ant-design/icons'
+import { Card, Typography, Badge, Space, Modal, Button, Tooltip } from 'antd'
+import { LoadingOutlined, CheckCircleOutlined, WarningOutlined, CloseCircleOutlined, InfoCircleOutlined, ExpandOutlined } from '@ant-design/icons'
 import type { ActivityLogEntry } from '@/types'
 
 const { Text } = Typography
@@ -55,7 +55,7 @@ interface Props {
   loading?: boolean
 }
 
-export default function AgentActivityLog({ entries, loading }: Props) {
+function LogEntries({ entries, loading, maxHeight }: Props & { maxHeight: number | string }) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -63,69 +63,108 @@ export default function AgentActivityLog({ entries, loading }: Props) {
   }, [entries.length])
 
   return (
-    <Card
-      size="small"
-      title={
-        <Space size={6}>
-          <Text strong style={{ fontSize: 13 }}>Agent Activity</Text>
-          {loading && <Badge status="processing" />}
-        </Space>
-      }
-      style={{ marginTop: 16 }}
-      bodyStyle={{ padding: 0 }}
+    <div
+      style={{
+        background: '#0d1117',
+        borderRadius: 6,
+        padding: '10px 14px',
+        minHeight: 80,
+        maxHeight,
+        overflowY: 'auto',
+        fontFamily: '"Fira Code", "JetBrains Mono", Consolas, monospace',
+      }}
     >
-      <div
-        style={{
-          background: '#0d1117',
-          borderRadius: '0 0 6px 6px',
-          padding: '10px 14px',
-          minHeight: 80,
-          maxHeight: 260,
-          overflowY: 'auto',
-          fontFamily: '"Fira Code", "JetBrains Mono", Consolas, monospace',
-        }}
+      {entries.length === 0 && (
+        <Text style={{ color: '#484f58', fontSize: 12 }}>
+          Waiting for pipeline to start...
+        </Text>
+      )}
+      {entries.map((entry, i) => {
+        const isLast = i === entries.length - 1
+        const agentColor = AGENT_COLORS[entry.agent] ?? '#8b949e'
+        const time = new Date(entry.timestamp).toLocaleTimeString('en', { hour12: false })
+        const icon = entry.level === 'info'
+          ? (isLast && loading ? INFO_ACTIVE : INFO_STATIC)
+          : LEVEL_ICON[entry.level]
+        return (
+          <div
+            key={i}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 8,
+              marginBottom: 6,
+              padding: '4px 6px',
+              borderRadius: 4,
+              background: isLast ? LEVEL_COLOR[entry.level] + '18' : 'transparent',
+            }}
+          >
+            <Text style={{ color: '#484f58', fontSize: 10, marginTop: 2, minWidth: 60 }}>
+              {time}
+            </Text>
+            {icon}
+            <Text style={{ color: agentColor, fontSize: 11, minWidth: 120 }}>
+              [{entry.agent}]
+            </Text>
+            <Text style={{ color: '#e6edf3', fontSize: 12, flex: 1 }}>
+              {isLast ? <TypewriterText text={entry.message} /> : entry.message}
+            </Text>
+          </div>
+        )
+      })}
+      <div ref={bottomRef} />
+    </div>
+  )
+}
+
+export default function AgentActivityLog({ entries, loading }: Props) {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <>
+      <Card
+        size="small"
+        title={
+          <Space size={6}>
+            <Text strong style={{ fontSize: 13 }}>Agent Activity</Text>
+            {loading && <Badge status="processing" />}
+          </Space>
+        }
+        extra={
+          <Tooltip title="Expand logs">
+            <Button
+              type="text"
+              size="small"
+              icon={<ExpandOutlined />}
+              onClick={() => setExpanded(true)}
+              style={{ color: '#8b949e' }}
+            />
+          </Tooltip>
+        }
+        style={{ marginTop: 16 }}
+        styles={{ body: { padding: 0 } }}
       >
-        {entries.length === 0 && (
-          <Text style={{ color: '#484f58', fontSize: 12 }}>
-            Waiting for pipeline to start...
-          </Text>
-        )}
-        {entries.map((entry, i) => {
-          const isLast = i === entries.length - 1
-          const agentColor = AGENT_COLORS[entry.agent] ?? '#8b949e'
-          const time = new Date(entry.timestamp).toLocaleTimeString('en', { hour12: false })
-          // Show spinner only on the last info entry — past info entries get a static icon
-          const icon = entry.level === 'info'
-            ? (isLast ? INFO_ACTIVE : INFO_STATIC)
-            : LEVEL_ICON[entry.level]
-          return (
-            <div
-              key={i}
-              style={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 8,
-                marginBottom: 6,
-                padding: '4px 6px',
-                borderRadius: 4,
-                background: isLast ? LEVEL_COLOR[entry.level] + '18' : 'transparent',
-              }}
-            >
-              <Text style={{ color: '#484f58', fontSize: 10, marginTop: 2, minWidth: 60 }}>
-                {time}
-              </Text>
-              {icon}
-              <Text style={{ color: agentColor, fontSize: 11, minWidth: 120 }}>
-                [{entry.agent}]
-              </Text>
-              <Text style={{ color: '#e6edf3', fontSize: 12, flex: 1 }}>
-                {isLast ? <TypewriterText text={entry.message} /> : entry.message}
-              </Text>
-            </div>
-          )
-        })}
-        <div ref={bottomRef} />
-      </div>
-    </Card>
+        <div style={{ borderRadius: '0 0 6px 6px', overflow: 'hidden' }}>
+          <LogEntries entries={entries} loading={loading} maxHeight={260} />
+        </div>
+      </Card>
+
+      <Modal
+        open={expanded}
+        onCancel={() => setExpanded(false)}
+        footer={null}
+        destroyOnHidden
+        title={
+          <Space size={6}>
+            <Text strong>Agent Activity Log</Text>
+            {loading && <Badge status="processing" />}
+          </Space>
+        }
+        width="80vw"
+        styles={{ body: { padding: 0 } }}
+      >
+        <LogEntries entries={entries} loading={loading} maxHeight="70vh" />
+      </Modal>
+    </>
   )
 }
